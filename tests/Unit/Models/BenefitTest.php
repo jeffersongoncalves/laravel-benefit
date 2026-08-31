@@ -1,6 +1,5 @@
 <?php
 
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Schema;
 use JeffersonGoncalves\Benefit\Models\Benefit;
 
@@ -9,11 +8,17 @@ it('creates the benefits table via the migration', function () {
         ->and(Schema::hasColumns('benefits', ['id', 'name', 'description', 'slug', 'created_at', 'updated_at']))->toBeTrue();
 });
 
+// Asserting via schema introspection rather than inserting a duplicate row
+// and expecting a QueryException: on Postgres, a failed query inside
+// RefreshDatabase's per-test transaction leaves that connection without an
+// active transaction by the time the framework checks, which resets its
+// "already migrated" cache and forces a full re-migration before the next
+// test — turning one assertion into a multi-minute stall.
 it('enforces a unique slug', function () {
-    Benefit::factory()->create(['slug' => 'free-shipping']);
+    $unique = collect(Schema::getIndexes('benefits'))
+        ->contains(fn ($index) => $index['unique'] && $index['columns'] === ['slug']);
 
-    expect(fn () => Benefit::factory()->create(['slug' => 'free-shipping']))
-        ->toThrow(QueryException::class);
+    expect($unique)->toBeTrue();
 });
 
 it('stores and retrieves translated name and description per locale', function () {
